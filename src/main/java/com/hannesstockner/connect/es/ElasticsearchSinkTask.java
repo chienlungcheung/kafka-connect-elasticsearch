@@ -6,8 +6,9 @@ import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.apache.kafka.connect.sink.SinkTask;
 import org.elasticsearch.client.Client;
-import org.elasticsearch.client.transport.TransportClient;
-import org.elasticsearch.common.transport.InetSocketTransportAddress;
+import org.elasticsearch.common.settings.Settings;
+import org.elasticsearch.common.transport.TransportAddress;
+import org.elasticsearch.transport.client.PreBuiltTransportClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,21 +21,19 @@ import java.util.Map;
 public class ElasticsearchSinkTask extends SinkTask {
 
   private static final Logger log = LoggerFactory.getLogger(ElasticsearchSinkTask.class);
-
-  private String indexPrefix;
   private final String TYPE = "kafka";
-
+  private String indexPrefix;
   private Client client;
 
   @Override
   public void start(Map<String, String> props) {
     final String esHost = props.get(ElasticsearchSinkConnector.ES_HOST);
+    final String esPort = props.get(ElasticsearchSinkConnector.ES_PORT);
     indexPrefix = props.get(ElasticsearchSinkConnector.INDEX_PREFIX);
     try {
-      client = TransportClient
-        .builder()
-        .build()
-        .addTransportAddress(new InetSocketTransportAddress(InetAddress.getByName(esHost), 9300));
+      Settings settings = Settings.builder().put("cluster.name", "gnome-adx").build();
+      client = new PreBuiltTransportClient(settings)
+        .addTransportAddress(new TransportAddress(InetAddress.getByName(esHost), Integer.parseInt(esPort)));
 
       client
         .admin()

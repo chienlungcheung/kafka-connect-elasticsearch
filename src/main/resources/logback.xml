@@ -1,12 +1,25 @@
-<configuration>
-  <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+<?xml version="1.0" encoding="UTF-8"?>
+
+<configuration debug="false" scan="true" scanPeriod="60 seconds">
+  <appender name="file-based-time"
+            class="ch.qos.logback.core.rolling.RollingFileAppender">
+    <filter class="ch.qos.logback.classic.filter.LevelFilter">
+      <level>DEBUG</level>
+      <onMatch>ACCEPT</onMatch>
+      <onMismatch>ACCEPT</onMismatch>
+    </filter>
+    <file>/data/kafka-connect-elasticsearch/app.log</file>
+    <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+      <FileNamePattern>
+        /data/kafka-connect-elasticsearch/app.log.%d{yyyy-MM-dd-HH}
+      </FileNamePattern>
+      <MaxHistory>24</MaxHistory>
+    </rollingPolicy>
     <encoder>
-      <pattern>%d{yyyy-MM-dd HH:mm:ss} %c{1} [%p] %m%n
-      </pattern>
+      <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [ %thread ] [ %p ] [%F::%L] %m%n</pattern>
     </encoder>
   </appender>
-
-  <root level="INFO">
-    <appender-ref ref="STDOUT" />
+  <root level="info">
+    <appender-ref ref="file-based-time"/>
   </root>
 </configuration>
