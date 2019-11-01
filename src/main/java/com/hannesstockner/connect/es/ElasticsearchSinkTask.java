@@ -25,17 +25,19 @@ public class ElasticsearchSinkTask extends SinkTask {
 
   private static final Logger log = LoggerFactory.getLogger(ElasticsearchSinkTask.class);
   private static Gson gson = new GsonBuilder().disableHtmlEscaping().create();
-  private final String TYPE = "kafka";
+  private String typeName;
   private String indexPrefix;
   private Client client;
 
   @Override
   public void start(Map<String, String> props) {
-    final String esHost = props.get(ElasticsearchSinkConnector.ES_HOST);
-    final String esPort = props.get(ElasticsearchSinkConnector.ES_PORT);
-    indexPrefix = props.get(ElasticsearchSinkConnector.INDEX_PREFIX);
+    typeName = props.get(ElasticSinkConnectorConfig.TYPE_NAME);
+    final String clusterName = props.get(ElasticSinkConnectorConfig.ELASTIC_CLUSTER_NAME);
+    final String esHost = props.get(ElasticSinkConnectorConfig.ELASTIC_HOST);
+    final String esPort = props.get(ElasticSinkConnectorConfig.ELASTIC_PORT);
+    indexPrefix = props.get(ElasticSinkConnectorConfig.INDEX_PREFIX);
     try {
-      Settings settings = Settings.builder().put("cluster.name", "gnome-adx").build();
+      Settings settings = Settings.builder().put(ElasticSinkConnectorConfig.ELASTIC_CLUSTER_NAME, clusterName).build();
       client = new PreBuiltTransportClient(settings)
         .addTransportAddress(new TransportAddress(InetAddress.getByName(esHost), Integer.parseInt(esPort)));
 
@@ -45,7 +47,7 @@ public class ElasticsearchSinkTask extends SinkTask {
           .indices()
           .preparePutTemplate("kafka_template")
           .setTemplate(indexPrefix + "*")
-          .addMapping(TYPE, new HashMap<String, Object>() {{
+          .addMapping(typeName, new HashMap<String, Object>() {{
             put("date_detection", false);
             put("numeric_detection", false);
           }})
@@ -67,7 +69,7 @@ public class ElasticsearchSinkTask extends SinkTask {
         record);
       try {
         client
-          .prepareIndex(indexPrefix + record.topic(), TYPE)
+          .prepareIndex(indexPrefix + record.topic(), typeName)
           .setSource(gson.toJson(record), XContentType.JSON)
           .get();
       } catch (Exception e) {

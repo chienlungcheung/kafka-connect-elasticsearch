@@ -19,7 +19,7 @@
       <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [ %thread ] [ %p ] [%F::%L] %m%n</pattern>
     </encoder>
   </appender>
-  <root level="info">
+  <root level="debug">
     <appender-ref ref="file-based-time"/>
   </root>
 </configuration>
