@@ -1,5 +1,7 @@
 package com.hannesstockner.connect.es;
 
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.connect.errors.ConnectException;
@@ -8,6 +10,7 @@ import org.apache.kafka.connect.sink.SinkTask;
 import org.elasticsearch.client.Client;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.transport.TransportAddress;
+import org.elasticsearch.common.xcontent.XContentType;
 import org.elasticsearch.transport.client.PreBuiltTransportClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,6 +24,7 @@ import java.util.Map;
 public class ElasticsearchSinkTask extends SinkTask {
 
   private static final Logger log = LoggerFactory.getLogger(ElasticsearchSinkTask.class);
+  private static Gson gson = new GsonBuilder().disableHtmlEscaping().create();
   private final String TYPE = "kafka";
   private String indexPrefix;
   private Client client;
@@ -35,16 +39,21 @@ public class ElasticsearchSinkTask extends SinkTask {
       client = new PreBuiltTransportClient(settings)
         .addTransportAddress(new TransportAddress(InetAddress.getByName(esHost), Integer.parseInt(esPort)));
 
-      client
-        .admin()
-        .indices()
-        .preparePutTemplate("kafka_template")
-        .setTemplate(indexPrefix + "*")
-        .addMapping(TYPE, new HashMap<String, Object>() {{
-          put("date_detection", false);
-          put("numeric_detection", false);
-        }})
-        .get();
+      try {
+        client
+          .admin()
+          .indices()
+          .preparePutTemplate("kafka_template")
+          .setTemplate(indexPrefix + "*")
+          .addMapping(TYPE, new HashMap<String, Object>() {{
+            put("date_detection", false);
+            put("numeric_detection", false);
+          }})
+          .get();
+      } catch (Exception e) {
+        e.printStackTrace();
+        System.exit(-1);
+      }
     } catch (UnknownHostException ex) {
       throw new ConnectException("Couldn't connect to es host", ex);
     }
@@ -53,14 +62,18 @@ public class ElasticsearchSinkTask extends SinkTask {
   @Override
   public void put(Collection<SinkRecord> records) {
     for (SinkRecord record : records) {
-      log.info("Processing {}", record.value());
-
-      log.info(record.value().getClass().toString());
-
-      client
-        .prepareIndex(indexPrefix + record.topic(), TYPE)
-        .setSource(record.value().toString())
-        .get();
+      log.debug("Processing record type = {}, record content = {}",
+        record.value().getClass(),
+        record);
+      try {
+        client
+          .prepareIndex(indexPrefix + record.topic(), TYPE)
+          .setSource(gson.toJson(record), XContentType.JSON)
+          .get();
+      } catch (Exception e) {
+        e.printStackTrace();
+        System.exit(-1);
+      }
     }
   }
 
