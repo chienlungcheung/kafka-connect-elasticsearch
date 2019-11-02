@@ -1,7 +1,6 @@
 package com.hannesstockner.connect.es;
 
 import org.apache.kafka.common.config.ConfigDef;
-import org.apache.kafka.common.utils.AppInfoParser;
 import org.apache.kafka.connect.connector.Task;
 import org.apache.kafka.connect.sink.SinkConnector;
 import org.slf4j.Logger;
@@ -16,28 +15,47 @@ public class ElasticsearchSinkConnector extends SinkConnector {
 
   private static Logger logger = LoggerFactory.getLogger(ElasticsearchSinkConnector.class);
 
-  private Map<String, String> configProperties;
+  /**
+   * common configs
+   */
+  public static final String NAME = "name";
+  public static final String CONNECTOR_CLASS = "connector.class";
+  public static final String TASKS_MAX = "tasks.max";
+  public static final String TOPICS = "topics";
 
-  public static final String TYPE_NAME = "kafka";
-  public static final String ES_CLUSTER_NAME = "gnome-adx";
+  /**
+   * es-sink-connector dependent configs
+   */
+  public static final String ES_CLUSTER_NAME = "es.cluster.name";
   public static final String ES_HOST = "es.host";
   public static final String ES_PORT = "es.port";
   public static final String INDEX_PREFIX = "index.prefix";
+  public static final String TYPE_NAME = "type";
 
-  private String esHost;
-  private String esPort;
-  private String indexPrefix;
+
+  public static final ConfigDef CONFIG_DEF = new ConfigDef()
+      .define(NAME, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "Unique name for the connector. Attempting to register again with the same name will fail.")
+      .define(CONNECTOR_CLASS, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "The Java class for the connector.")
+      .define(TASKS_MAX, ConfigDef.Type.INT, ConfigDef.Importance.HIGH, "The maximum number of tasks that should be created for this connector. The connector may create fewer tasks if it cannot achieve this level of parallelism.")
+      .define(TOPICS, ConfigDef.Type.LIST, ConfigDef.Importance.HIGH, "A comma-separated list of topics to use as input for this connector.")
+      .define(ES_CLUSTER_NAME, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "The name of es cluster to be connected.")
+      .define(ES_HOST, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "The host of an node of the es cluster.")
+      .define(ES_PORT, ConfigDef.Type.INT, ConfigDef.Importance.HIGH, "The transport tcp port of an node of the es cluster.")
+      .define(INDEX_PREFIX, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "Index prefix to be written to the es cluster.")
+      .define(TYPE_NAME, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "Type to be written to the es cluster.");
+  private List<String> topics;
+
+  private Map<String, String> configProperties;
 
   @Override
   public String version() {
-    return AppInfoParser.getVersion();
+    return "1.0";
   }
 
   @Override
   public void start(Map<String, String> props) {
     configProperties = props;
-    new ElasticSinkConnectorConfig(props);
-    logger.info("connector[{}] started", this.getClass());
+    logger.info("connector[{}] started, configuration is {}", this.getClass(), configProperties);
   }
 
   @Override
@@ -62,7 +80,7 @@ public class ElasticsearchSinkConnector extends SinkConnector {
 
   @Override
   public ConfigDef config() {
-    logger.info("connector[{}] get config", this.getClass());
-    return ElasticSinkConnectorConfig.conf();
+    logger.info("connector[{}] get config-def", this.getClass());
+    return CONFIG_DEF;
   }
 }

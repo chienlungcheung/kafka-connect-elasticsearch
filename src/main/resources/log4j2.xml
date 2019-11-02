@@ -1,33 +1,38 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Configuration status="debug" monitorinterval="60">
-	<Properties>
-		<property name="log.dir">/data/kafka-connect-elasticsearch</property>
-		<property name="log.file">app.log</property>
-		<property name="file_pattern_default">.%d{yyyy-MM-dd-HH}</property>
-	</Properties>
-	<Appenders>
-		<Console name="console-printer" target="SYSTEM_OUT">
-			<PatternLayout pattern="%d{yyyy-MM-dd HH:mm:ss.SSS} [ %thread ] [ %p ] [%logger] %m%n" />
-		</Console>
-		<RollingRandomAccessFile name="service" fileName="${log.dir}/${log.file}"
-			filePattern="${log.dir}/${log.file}${file_pattern_default}" immediateFlush="true" append="true" ignoreExceptions="false">
-			<PatternLayout pattern="%d{yyyy-MM-dd HH:mm:ss.SSS} [ %thread ] [ %p ] [%logger] %m%n" />
-			<Policies>
-				<TimeBasedTriggeringPolicy />
-			</Policies>
-			<DefaultRolloverStrategy>
-				<Delete basePath="${log.dir}" maxDepth="1">
-					<IfFileName glob="${log.file}.*" />
-					<IfLastModified age="24h" />
-				</Delete>
-			</DefaultRolloverStrategy>
-		</RollingRandomAccessFile>
-	</Appenders>
-	<Loggers>
-		<Root level="debug">
-			<!-- <AppenderRef ref="console-printer" /> -->
-			<AppenderRef ref="service" />
-		</Root>
-	</Loggers>
+<Configuration status="WARN" monitorinterval="60">
+  <Properties>
+    <property name="log.dir">/data/kafka-connect-elasticsearch</property>
+    <property name="log.file">app.log</property>
+    <property name="file_pattern_default">.%d{yyyy-MM-dd-HH}</property>
+  </Properties>
+  <Appenders>
+    <Console name="console-appender" target="SYSTEM_OUT">
+      <PatternLayout pattern="%d{yyyy-MM-dd HH:mm:ss.SSS} [ %thread ] [ %p ] [%logger] %m%n"/>
+    </Console>
+    <RollingRandomAccessFile
+        name="file-appender"
+        fileName="${log.dir}/${log.file}"
+        filePattern="${log.dir}/${log.file}${file_pattern_default}"
+        immediateFlush="true"
+        append="true"
+        ignoreExceptions="false">
+      <PatternLayout pattern="%d{yyyy-MM-dd HH:mm:ss.SSS} [ %thread ] [ %p ] [%logger] %m%n"/>
+      <Policies>
+        <TimeBasedTriggeringPolicy/>
+      </Policies>
+      <DefaultRolloverStrategy>
+        <Delete basePath="${log.dir}" maxDepth="1">
+          <IfFileName glob="${log.file}.*"/>
+          <IfLastModified age="24h"/>
+        </Delete>
+      </DefaultRolloverStrategy>
+    </RollingRandomAccessFile>
+  </Appenders>
+  <Loggers>
+    <Root level="debug">
+      <AppenderRef ref="console-appender"/>
+      <AppenderRef ref="file-appender"/>
+    </Root>
+  </Loggers>
 </Configuration>
 

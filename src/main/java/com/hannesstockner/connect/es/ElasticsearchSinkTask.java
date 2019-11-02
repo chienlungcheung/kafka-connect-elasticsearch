@@ -4,7 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
-import org.apache.kafka.connect.errors.ConnectException;
+import org.apache.kafka.common.config.AbstractConfig;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.apache.kafka.connect.sink.SinkTask;
 import org.elasticsearch.client.Client;
@@ -16,7 +16,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.InetAddress;
-import java.net.UnknownHostException;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
@@ -31,33 +30,32 @@ public class ElasticsearchSinkTask extends SinkTask {
 
   @Override
   public void start(Map<String, String> props) {
-    typeName = props.get(ElasticSinkConnectorConfig.TYPE_NAME);
-    final String clusterName = props.get(ElasticSinkConnectorConfig.ELASTIC_CLUSTER_NAME);
-    final String esHost = props.get(ElasticSinkConnectorConfig.ELASTIC_HOST);
-    final String esPort = props.get(ElasticSinkConnectorConfig.ELASTIC_PORT);
-    indexPrefix = props.get(ElasticSinkConnectorConfig.INDEX_PREFIX);
-    try {
-      Settings settings = Settings.builder().put(ElasticSinkConnectorConfig.ELASTIC_CLUSTER_NAME, clusterName).build();
-      client = new PreBuiltTransportClient(settings)
-        .addTransportAddress(new TransportAddress(InetAddress.getByName(esHost), Integer.parseInt(esPort)));
+    AbstractConfig parsedConfig = new AbstractConfig(ElasticsearchSinkConnector.CONFIG_DEF, props);
+    typeName = parsedConfig.getString(ElasticsearchSinkConnector.TYPE_NAME);
+    final String clusterName = parsedConfig.getString(ElasticsearchSinkConnector.ES_CLUSTER_NAME);
+    final String esHost = parsedConfig.getString(ElasticsearchSinkConnector.ES_HOST);
+    final int esPort = parsedConfig.getInt(ElasticsearchSinkConnector.ES_PORT);
+    indexPrefix = parsedConfig.getString(ElasticsearchSinkConnector.INDEX_PREFIX);
 
-      try {
-        client
-          .admin()
-          .indices()
-          .preparePutTemplate("kafka_template")
-          .setTemplate(indexPrefix + "*")
-          .addMapping(typeName, new HashMap<String, Object>() {{
-            put("date_detection", false);
-            put("numeric_detection", false);
-          }})
-          .get();
-      } catch (Exception e) {
-        e.printStackTrace();
-        System.exit(-1);
-      }
-    } catch (UnknownHostException ex) {
-      throw new ConnectException("Couldn't connect to es host", ex);
+    try {
+      Settings settings = Settings.builder().put("cluster.name", clusterName).build();
+      client = new PreBuiltTransportClient(settings)
+        .addTransportAddress(new TransportAddress(InetAddress.getByName(esHost), esPort));
+
+      client
+        .admin()
+        .indices()
+        .preparePutTemplate("kafka_template")
+        .setTemplate(indexPrefix + "*")
+        .addMapping(typeName, new HashMap<String, Object>() {{
+          put("date_detection", false);
+          put("numeric_detection", false);
+        }})
+        .get();
+
+    } catch (Exception e) {
+      log.error("Couldn't connect to es: ", e);
+      System.exit(-1);
     }
   }
 
@@ -67,14 +65,22 @@ public class ElasticsearchSinkTask extends SinkTask {
       log.debug("Processing record type = {}, record content = {}",
         record.value().getClass(),
         record);
-      try {
-        client
-          .prepareIndex(indexPrefix + record.topic(), typeName)
-          .setSource(gson.toJson(record), XContentType.JSON)
-          .get();
-      } catch (Exception e) {
-        e.printStackTrace();
-        System.exit(-1);
+      boolean failed = true;
+      while (failed) {
+        try {
+          client
+            .prepareIndex(indexPrefix + record.topic(), typeName)
+            .setSource(gson.toJson(record), XContentType.JSON)
+            .get();
+          failed = false;
+        } catch (Exception e) {
+          log.error("Couldn't send record to es, will try: ", e);
+          try {
+            log.info("send record to es, retrying...");
+            Thread.sleep(5000);
+          } catch (InterruptedException ignored) {
+          }
+        }
       }
     }
   }
