@@ -7,6 +7,11 @@ import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.config.AbstractConfig;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.apache.kafka.connect.sink.SinkTask;
+import org.elasticsearch.action.bulk.BulkItemResponse;
+import org.elasticsearch.action.bulk.BulkRequestBuilder;
+import org.elasticsearch.action.bulk.BulkResponse;
+import org.elasticsearch.action.index.IndexRequest;
+import org.elasticsearch.action.index.IndexRequestBuilder;
 import org.elasticsearch.client.Client;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.transport.TransportAddress;
@@ -38,6 +43,8 @@ public class ElasticsearchSinkTask extends SinkTask {
     indexPrefix = parsedConfig.getString(ElasticsearchSinkConnector.INDEX_PREFIX);
 
     try {
+      // 避免重启报错：java.lang.IllegalStateException: availableProcessors is already set to [32], rejecting [32]
+      System.setProperty("es.set.netty.runtime.available.processors", "false");
       Settings settings = Settings.builder().put("cluster.name", clusterName).build();
       client = new PreBuiltTransportClient(settings)
         .addTransportAddress(new TransportAddress(InetAddress.getByName(esHost), esPort));
@@ -61,26 +68,24 @@ public class ElasticsearchSinkTask extends SinkTask {
 
   @Override
   public void put(Collection<SinkRecord> records) {
+    if (records.isEmpty()) {
+      log.debug("no records to be sent.");
+      return;
+    }
+    BulkRequestBuilder bulkRequestBuilder = client.prepareBulk();
     for (SinkRecord record : records) {
       log.debug("Processing record type = {}, record content = {}",
         record.value().getClass(),
         record);
-      boolean failed = true;
-      while (failed) {
-        try {
-          client
-            .prepareIndex(indexPrefix + record.topic(), typeName)
-            .setSource(gson.toJson(record), XContentType.JSON)
-            .get();
-          failed = false;
-        } catch (Exception e) {
-          log.error("Couldn't send record to es, will try: ", e);
-          try {
-            log.info("send record to es, retrying...");
-            Thread.sleep(5000);
-          } catch (InterruptedException ignored) {
-          }
-        }
+      IndexRequest indexRequest = client.prepareIndex(indexPrefix + record.topic(), typeName)
+        .setSource(gson.toJson(record), XContentType.JSON)
+        .request();
+      bulkRequestBuilder.add(indexRequest);
+    }
+    BulkResponse bulkResponse = bulkRequestBuilder.execute().actionGet();
+    if (bulkResponse.hasFailures()) {
+      for (BulkItemResponse item : bulkResponse.getItems()) {
+        log.warn("send to es failed: failure = {}", item.getFailure());
       }
     }
   }
