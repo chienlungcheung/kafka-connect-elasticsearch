@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 public class ElasticsearchSinkConnector extends SinkConnector {
 
@@ -54,6 +55,7 @@ public class ElasticsearchSinkConnector extends SinkConnector {
   @Override
   public void start(Map<String, String> props) {
     configProperties = props;
+    Monitor.start(0, 1, TimeUnit.SECONDS);
     logger.info("connector[{}] started, configuration is {}", this.getClass(), configProperties);
   }
 
@@ -74,6 +76,7 @@ public class ElasticsearchSinkConnector extends SinkConnector {
 
   @Override
   public void stop() {
+    Monitor.stop();
     logger.info("connector[{}] stopped", this.getClass());
   }
 

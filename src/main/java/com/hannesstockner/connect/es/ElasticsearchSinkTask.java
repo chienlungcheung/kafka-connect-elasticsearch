@@ -33,29 +33,39 @@ public class ElasticsearchSinkTask extends SinkTask {
   private String indexPrefix;
   private Client client;
 
-  private static final ExecutorService writer = Executors.newSingleThreadExecutor();
+  private final ExecutorService writer = Executors.newSingleThreadExecutor();
 
   private static class WriteTask implements Runnable {
     private static BlockingDeque<BulkRequestBuilder> requests = new LinkedBlockingDeque<>(1000000);
     @Override
     public void run() {
       while (!Thread.currentThread().isInterrupted()) {
-        BulkRequestBuilder bulkRequestBuilder = requests.poll();
-        if (bulkRequestBuilder == null) {
-          continue;
+        BulkRequestBuilder bulkRequestBuilder = null;
+        try {
+          bulkRequestBuilder = requests.take();
+        } catch (InterruptedException e) {
+          return;
         }
+        int reqCnt = bulkRequestBuilder.numberOfActions();
         BulkResponse bulkResponse = null;
         try {
           bulkResponse = bulkRequestBuilder.execute().actionGet(60, TimeUnit.SECONDS);
+          if (bulkResponse.hasFailures()) {
+            for (BulkItemResponse item : bulkResponse.getItems()) {
+              if (item.isFailed()) {
+                Monitor.getFailedRequests().incrementAndGet();
+              } else {
+                Monitor.getSuccessfulRequests().incrementAndGet();
+              }
+              log.warn("send to es failed: failure = {}", item.getFailure());
+            }
+          } else {
+            Monitor.getSuccessfulRequests().addAndGet(reqCnt);
+          }
         } catch (Exception e) {
           log.warn("send to es failed: exception = ", e);
-          continue;
         }
-        if (bulkResponse.hasFailures()) {
-          for (BulkItemResponse item : bulkResponse.getItems()) {
-            log.warn("send to es failed: failure = {}", item.getFailure());
-          }
-        }
+        Monitor.getToSentRequests().addAndGet(-reqCnt);
       }
     }
   }
@@ -70,7 +80,11 @@ public class ElasticsearchSinkTask extends SinkTask {
     try {
       // 避免重启报错：java.lang.IllegalStateException: availableProcessors is already set to [32], rejecting [32]
       System.setProperty("es.set.netty.runtime.available.processors", "false");
-      Settings settings = Settings.builder().put("cluster.name", clusterName).build();
+      Settings settings = Settings
+        .builder()
+        .put("cluster.name", clusterName)
+        .put("client.transport.sniff", true)
+        .build();
       String[] hostPortPair = esServers.split(",");
       TransportAddress[] transportAddresses = new TransportAddress[hostPortPair.length];
       for (int i = 0; i < hostPortPair.length; ++i) {
@@ -116,13 +130,13 @@ public class ElasticsearchSinkTask extends SinkTask {
         .setSource(gson.toJson(record), XContentType.JSON)
         .request();
       bulkRequestBuilder.add(indexRequest);
-      try {
-        WriteTask.requests.offerLast(bulkRequestBuilder, 500, TimeUnit.MICROSECONDS);
-      } catch (InterruptedException e) {
-        log.warn("queue of WriteTask is full, may be sending message to es is too slow. exception: ", e);
-      }
     }
-
+    try {
+      WriteTask.requests.offerLast(bulkRequestBuilder, 500, TimeUnit.MICROSECONDS);
+      Monitor.getToSentRequests().addAndGet(bulkRequestBuilder.numberOfActions());
+    } catch (InterruptedException e) {
+      log.warn("queue of WriteTask is full, may be sending message to es is too slow. exception: ", e);
+    }
   }
 
   @Override
