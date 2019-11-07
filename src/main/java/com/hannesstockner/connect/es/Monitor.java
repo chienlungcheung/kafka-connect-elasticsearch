@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicLong;
 public class Monitor {
   private static ScheduledExecutorService monitor;
   @Getter
-  private static AtomicLong toSentRequests;
+  private static AtomicLong toBeSentRequests;
   @Getter
   private static AtomicLong successfulRequests;
   @Getter
@@ -27,11 +27,11 @@ public class Monitor {
                            long period,
                            TimeUnit unit) {
     monitor = Executors.newSingleThreadScheduledExecutor();
-    toSentRequests = new AtomicLong(0);
+    toBeSentRequests = new AtomicLong(0);
     successfulRequests = new AtomicLong(0);
     failedRequests = new AtomicLong(0);
-    monitor.scheduleAtFixedRate(() -> logger.info("toSentRequests = {}, successfulRequests = {}, failedRequests = {}",
-      toSentRequests.get(), successfulRequests.get(), failedRequests.get()), initialDelay, period, unit);
+    monitor.scheduleAtFixedRate(() -> logger.info("toBeSentRequests = {}, successfulRequests = {}, failedRequests = {}",
+      toBeSentRequests.get(), successfulRequests.get(), failedRequests.get()), initialDelay, period, unit);
   }
 
   public static void stop() {
