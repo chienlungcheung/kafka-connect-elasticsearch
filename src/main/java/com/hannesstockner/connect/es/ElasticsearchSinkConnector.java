@@ -27,8 +27,7 @@ public class ElasticsearchSinkConnector extends SinkConnector {
    * es-sink-connector dependent configs
    */
   public static final String ES_CLUSTER_NAME = "es.cluster.name";
-  public static final String ES_HOST = "es.host";
-  public static final String ES_PORT = "es.port";
+  public static final String ES_SERVERS = "es.servers";
   public static final String INDEX_PREFIX = "index.prefix";
   public static final String TYPE_NAME = "type";
 
@@ -39,8 +38,8 @@ public class ElasticsearchSinkConnector extends SinkConnector {
       .define(TASKS_MAX, ConfigDef.Type.INT, ConfigDef.Importance.HIGH, "The maximum number of tasks that should be created for this connector. The connector may create fewer tasks if it cannot achieve this level of parallelism.")
       .define(TOPICS, ConfigDef.Type.LIST, ConfigDef.Importance.HIGH, "A comma-separated list of topics to use as input for this connector.")
       .define(ES_CLUSTER_NAME, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "The name of es cluster to be connected.")
-      .define(ES_HOST, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "The host of an node of the es cluster.")
-      .define(ES_PORT, ConfigDef.Type.INT, ConfigDef.Importance.HIGH, "The transport tcp port of an node of the es cluster.")
+      .define(ES_SERVERS, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "The servers of the es cluster, [host:port] for each server, comma separated.")
+//      .define(ES_PORT, ConfigDef.Type.INT, ConfigDef.Importance.HIGH, "The transport tcp port of an node of the es cluster.")
       .define(INDEX_PREFIX, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "Index prefix to be written to the es cluster.")
       .define(TYPE_NAME, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "Type to be written to the es cluster.");
   private List<String> topics;

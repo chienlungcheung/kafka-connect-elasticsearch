@@ -11,7 +11,6 @@ import org.elasticsearch.action.bulk.BulkItemResponse;
 import org.elasticsearch.action.bulk.BulkRequestBuilder;
 import org.elasticsearch.action.bulk.BulkResponse;
 import org.elasticsearch.action.index.IndexRequest;
-import org.elasticsearch.action.index.IndexRequestBuilder;
 import org.elasticsearch.client.Client;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.transport.TransportAddress;
@@ -21,9 +20,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.InetAddress;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.Map;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
+import java.util.concurrent.*;
 
 public class ElasticsearchSinkTask extends SinkTask {
 
@@ -33,27 +33,59 @@ public class ElasticsearchSinkTask extends SinkTask {
   private String indexPrefix;
   private Client client;
 
+  private static final ExecutorService writer = Executors.newSingleThreadExecutor();
+
+  private static class WriteTask implements Runnable {
+    private static BlockingDeque<BulkRequestBuilder> requests = new LinkedBlockingDeque<>(1000000);
+    @Override
+    public void run() {
+      while (!Thread.currentThread().isInterrupted()) {
+        BulkRequestBuilder bulkRequestBuilder = requests.poll();
+        if (bulkRequestBuilder == null) {
+          continue;
+        }
+        BulkResponse bulkResponse = null;
+        try {
+          bulkResponse = bulkRequestBuilder.execute().actionGet(60, TimeUnit.SECONDS);
+        } catch (Exception e) {
+          log.warn("send to es failed: exception = ", e);
+          continue;
+        }
+        if (bulkResponse.hasFailures()) {
+          for (BulkItemResponse item : bulkResponse.getItems()) {
+            log.warn("send to es failed: failure = {}", item.getFailure());
+          }
+        }
+      }
+    }
+  }
   @Override
   public void start(Map<String, String> props) {
     AbstractConfig parsedConfig = new AbstractConfig(ElasticsearchSinkConnector.CONFIG_DEF, props);
     typeName = parsedConfig.getString(ElasticsearchSinkConnector.TYPE_NAME);
     final String clusterName = parsedConfig.getString(ElasticsearchSinkConnector.ES_CLUSTER_NAME);
-    final String esHost = parsedConfig.getString(ElasticsearchSinkConnector.ES_HOST);
-    final int esPort = parsedConfig.getInt(ElasticsearchSinkConnector.ES_PORT);
+    final String esServers = parsedConfig.getString(ElasticsearchSinkConnector.ES_SERVERS);
     indexPrefix = parsedConfig.getString(ElasticsearchSinkConnector.INDEX_PREFIX);
 
     try {
       // 避免重启报错：java.lang.IllegalStateException: availableProcessors is already set to [32], rejecting [32]
       System.setProperty("es.set.netty.runtime.available.processors", "false");
       Settings settings = Settings.builder().put("cluster.name", clusterName).build();
+      String[] hostPortPair = esServers.split(",");
+      TransportAddress[] transportAddresses = new TransportAddress[hostPortPair.length];
+      for (int i = 0; i < hostPortPair.length; ++i) {
+        String pair = hostPortPair[i];
+        String[] hostPort = pair.split(":");
+        transportAddresses[i] = new TransportAddress(InetAddress.getByName(hostPort[0]), Integer.parseInt(hostPort[1]));
+      }
       client = new PreBuiltTransportClient(settings)
-        .addTransportAddress(new TransportAddress(InetAddress.getByName(esHost), esPort));
+        .addTransportAddresses(transportAddresses);
 
       client
         .admin()
         .indices()
         .preparePutTemplate("kafka_template")
-        .setTemplate(indexPrefix + "*")
+        .setPatterns(Collections.singletonList(indexPrefix + "*"))
         .addMapping(typeName, new HashMap<String, Object>() {{
           put("date_detection", false);
           put("numeric_detection", false);
@@ -64,6 +96,8 @@ public class ElasticsearchSinkTask extends SinkTask {
       log.error("Couldn't connect to es: ", e);
       System.exit(-1);
     }
+
+    writer.submit(new WriteTask());
   }
 
   @Override
@@ -72,22 +106,23 @@ public class ElasticsearchSinkTask extends SinkTask {
       log.debug("no records to be sent.");
       return;
     }
+    String indexSuffix = DateTimeFormatter.ofPattern("yyyyMMdd").format(LocalDateTime.now());
     BulkRequestBuilder bulkRequestBuilder = client.prepareBulk();
     for (SinkRecord record : records) {
       log.debug("Processing record type = {}, record content = {}",
         record.value().getClass(),
         record);
-      IndexRequest indexRequest = client.prepareIndex(indexPrefix + record.topic(), typeName)
+      IndexRequest indexRequest = client.prepareIndex(indexPrefix + record.topic() + "-" + indexSuffix, typeName)
         .setSource(gson.toJson(record), XContentType.JSON)
         .request();
       bulkRequestBuilder.add(indexRequest);
-    }
-    BulkResponse bulkResponse = bulkRequestBuilder.execute().actionGet();
-    if (bulkResponse.hasFailures()) {
-      for (BulkItemResponse item : bulkResponse.getItems()) {
-        log.warn("send to es failed: failure = {}", item.getFailure());
+      try {
+        WriteTask.requests.offerLast(bulkRequestBuilder, 500, TimeUnit.MICROSECONDS);
+      } catch (InterruptedException e) {
+        log.warn("queue of WriteTask is full, may be sending message to es is too slow. exception: ", e);
       }
     }
+
   }
 
   @Override
@@ -96,7 +131,10 @@ public class ElasticsearchSinkTask extends SinkTask {
 
   @Override
   public void stop() {
-    client.close();
+    if (client != null) {
+      writer.shutdown();
+      client.close();
+    }
   }
 
   @Override
