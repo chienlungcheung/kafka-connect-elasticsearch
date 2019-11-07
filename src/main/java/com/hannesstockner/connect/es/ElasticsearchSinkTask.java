@@ -36,7 +36,7 @@ public class ElasticsearchSinkTask extends SinkTask {
   private final ExecutorService writer = Executors.newSingleThreadExecutor();
 
   private static class WriteTask implements Runnable {
-    private static BlockingDeque<BulkRequestBuilder> requests = new LinkedBlockingDeque<>(1000000);
+    private static BlockingDeque<BulkRequestBuilder> requests = new LinkedBlockingDeque<>(1000);
     @Override
     public void run() {
       while (!Thread.currentThread().isInterrupted()) {
@@ -132,7 +132,7 @@ public class ElasticsearchSinkTask extends SinkTask {
       bulkRequestBuilder.add(indexRequest);
     }
     try {
-      WriteTask.requests.offerLast(bulkRequestBuilder, 500, TimeUnit.MICROSECONDS);
+      WriteTask.requests.offerFirst(bulkRequestBuilder, 500, TimeUnit.MICROSECONDS);
       Monitor.getToSentRequests().addAndGet(bulkRequestBuilder.numberOfActions());
     } catch (InterruptedException e) {
       log.warn("queue of WriteTask is full, may be sending message to es is too slow. exception: ", e);

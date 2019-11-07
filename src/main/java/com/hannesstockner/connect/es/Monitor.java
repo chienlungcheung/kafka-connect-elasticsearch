@@ -30,7 +30,7 @@ public class Monitor {
     toSentRequests = new AtomicLong(0);
     successfulRequests = new AtomicLong(0);
     failedRequests = new AtomicLong(0);
-    monitor.scheduleAtFixedRate(() -> logger.info("totalRequests = {}, successfulRequests = {}, failedRequests = {}",
+    monitor.scheduleAtFixedRate(() -> logger.info("toSentRequests = {}, successfulRequests = {}, failedRequests = {}",
       toSentRequests.get(), successfulRequests.get(), failedRequests.get()), initialDelay, period, unit);
   }
 
