@@ -35,6 +35,10 @@ public class ElasticsearchSinkTask extends SinkTask {
   private BulkProcessor bulkProcessor;
   @Override
   public void start(Map<String, String> props) {
+    if (props == null) {
+      log.error("props is null in {}.start()", this.getClass());
+      return;
+    }
     AbstractConfig parsedConfig = new AbstractConfig(ElasticsearchSinkConnector.CONFIG_DEF, props);
     typeName = parsedConfig.getString(ElasticsearchSinkConnector.TYPE_NAME);
     final String clusterName = parsedConfig.getString(ElasticsearchSinkConnector.ES_CLUSTER_NAME);
@@ -67,7 +71,7 @@ public class ElasticsearchSinkTask extends SinkTask {
       new BulkProcessor.Listener() {
         @Override
         public void beforeBulk(long executionId, BulkRequest request) {
-          Monitor.getToBeSentRequests().incrementAndGet();
+
         }
 
         @Override
@@ -78,8 +82,13 @@ public class ElasticsearchSinkTask extends SinkTask {
 
         @Override
         public void afterBulk(long executionId, BulkRequest request, Throwable failure) {
-          Monitor.getToBeSentRequests().decrementAndGet();
-          Monitor.getFailedRequests().incrementAndGet();
+          log.error("executionId = {}, bulk request failed: {}", executionId, failure.getMessage());
+          if (Monitor.getToBeSentRequests() == null || Monitor.getFailedRequests() == null) {
+            log.error("Monitor.getToBeSentRequests() == null || Monitor.getFailedRequests() == null");
+          } else {
+            Monitor.getToBeSentRequests().decrementAndGet();
+            Monitor.getFailedRequests().incrementAndGet();
+          }
         }
       })
       .setBulkActions(1000)
@@ -105,6 +114,7 @@ public class ElasticsearchSinkTask extends SinkTask {
         .setSource(gson.toJson(record), XContentType.JSON)
         .request();
       bulkProcessor.add(indexRequest);
+      Monitor.getToBeSentRequests().incrementAndGet();
     }
   }
 

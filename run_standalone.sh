@@ -1,10 +1,5 @@
 #!/bin/sh
 
-if [ -z "$DOCKER_IP" ]; then
-  echo "Need to set DOCKER_IP"
-  exit 1
-fi
-
 CONNECT_PROCESS_FILE=connect-standalone.properties
 CONNECT_FILE_SOURCE=connect-file-source.properties
 CONNECT_ES_SINK=connect-elasticsearch-sink-connector.properties
